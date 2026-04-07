@@ -1,0 +1,448 @@
+---
+title: "Capstone Analysis Queries"
+author: "Maddi Klepps"
+date: "2026-03-22"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# **Bring in Cleaned & Transformed Dataset**
+
+```{r}
+Dataset <- read.csv("Cleaned_Transformed_Dataset_Klepps.csv")
+```
+
+
+# **Import Needed Libraries**
+
+```{r, message = FALSE, warning = FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+
+# **Exploratory Analysis**
+
+
+## **Counts**
+
+```{r}
+Dataset |>
+  summarize(unique_count=n_distinct(author))
+```
+
+```{r}
+Dataset |>
+  summarize(unique_count=n_distinct(title))
+```
+
+```{r}
+Dataset |>
+  summarize(unique_count=n_distinct(genre))
+```
+
+## **Authors**
+
+### How many times each Author appears (output hidden due to hundreds of lines)
+```{r, results = "hide"}
+author_counts <- Dataset |>
+  count(author, name = "count")
+
+author_counts
+```
+
+### Most popular Authors (output hidden due to hundreds of lines)
+```{r,  results = "hide"}
+author_rank <- Dataset |>
+  count(author, name = "count") |>
+  arrange(desc(count))
+
+author_rank
+```
+
+
+
+## **Titles**
+
+### How many times each Title appears
+### *slightly redundant to above query - verifies each title only appears once?* 
+```{r}
+title_counts <- Dataset |>
+  count(title, name = "count")
+```
+
+### **Title Ratings**
+```{r}
+title_ratings <- Dataset |>
+  arrange(desc(rating)) |>
+  mutate(order_rating = row_number())
+
+result_ratings <- title_ratings |>
+  select(title, author, rating)
+```
+
+
+
+## **Genres**
+
+### How many time each Genre appears
+```{r}
+genre_counts <- Dataset |>
+  count(genre, name = "count") |>
+  arrange(desc(count))
+```
+
+### How many time each Subgenre appears
+```{r}
+subgenre_counts <- Dataset |>
+  count(subgenre, name = "count") |>
+  arrange(desc(count))
+```
+
+### Genres & associated Subgenres
+```{r}
+genres_subgenres_nested <- Dataset |>
+  group_by(genre) |>
+  summarize(subgenres = list(unique(subgenre)))
+```
+
+```{r, results = "hide", warning = FALSE}
+split(unique(Dataset$subgenre), Dataset$genre)
+```
+
+
+# **Refined Analysis & Querying Setup**
+
+
+## **Packages**
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(scales)
+library(stringr)
+```
+
+
+## **Theme Creation**
+
+```{r}
+theme_sage_purple <- function() {
+  theme_bw() +
+  theme(
+    # Axis Text
+    axis.text.y = element_text(size = 9, lineheight = 1.1),
+    axis.text.x = element_text(size = 10),
+    
+    # Titles
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5, margin = margin(b = 10)),
+    axis.title.y = element_text(size = 12, face = "bold"),
+    axis.title.x = element_text(size = 12, face = "bold"),
+    
+    # Background
+    panel.background = element_rect(fill = "#DDE8D8", color = NA),
+    plot.background = element_rect(fill = "#DDE8D8", color = NA),
+    
+    # Gridlines
+    panel.grid.major = element_line(color = "white"),
+    panel.grid.minor = element_line(color = "white"),
+    
+    #Margins
+    plot.margin = margin(10, 40, 10, 10)
+  )
+}
+```
+
+
+
+# **Refined Queries**
+
+
+## **1. Which genres generate the most total revenue? (using number of reviews multiplied by final selling price)**
+```{r}
+Dataset <- Dataset |>
+  mutate(revenue = final_price * reviews_count)
+
+genre_revenue <- Dataset |>
+  group_by(genre) |>
+  summarize(total_revenue = sum(revenue, na.rm = TRUE)) |>
+  arrange(desc(total_revenue))
+```
+
+```{r fig.width=14, fig.height=10}
+ggplot(genre_revenue, aes(x = reorder(str_wrap(genre, width = 25), total_revenue), y = total_revenue)) +
+  geom_col(fill = "#796878") +
+  geom_text(
+    aes(label = paste0(round(total_revenue/ 1e6, 1), "M")),
+    hjust = -0.1,
+    size = 3
+  ) +
+  coord_flip() +
+  scale_y_continuous(
+    labels = label_number(scale = 1e-6, suffix = "M"),
+    expand = expansion(mult =c(0, 0.1))
+  ) +
+  labs(
+    title = "Total Revenue by Genre",
+    x = "Genre",
+    y = "Total Revenue (Millions USD)"
+  ) +
+  theme_sage_purple() +
+  guides(fill = "none")
+```
+  
+
+## **2. Which sub-genres generate the most total revenue? (using number of reviews multiplied by final selling price)**
+```{r}
+Dataset <- Dataset |>
+  mutate(revenue2 = final_price * reviews_count)
+
+subgenre_revenue <- Dataset |>
+  group_by(subgenre) |>
+  summarize(total_revenue = sum(revenue2, na.rm = TRUE)) |>
+  arrange(desc(total_revenue)) |>
+  slice_head(n = 10)
+``` 
+
+```{r fig.width=14, fig.height=6}
+ggplot(subgenre_revenue, aes(x = reorder(str_wrap(subgenre, width = 25), total_revenue), y = total_revenue)) +
+  geom_col(fill = "#796878") +
+  geom_text(
+    aes(label = paste0(round(total_revenue/ 1e6, 1), "M")),
+    hjust = -0.1,
+    size = 3
+  ) +
+  coord_flip() +
+  scale_y_continuous(
+    labels = label_number(scale = 1e-6, suffix = "M"),
+    expand = expansion(mult =c(0, 0.1))
+    ) +
+  labs(
+    title = "Total Revenue by Subgenre",
+    x = "Subgenre",
+    y = "Total Revenue (Millions USD)"
+  ) +
+  theme_sage_purple() +
+  guides(fill = "none")
+```
+
+
+## ***3. Which individual bestselling books drive the most revenue? **
+
+```{r fig.width = 14, fig.heigh = 10}
+top_books <- Dataset |>
+  mutate(revenue = final_price * reviews_count) |>
+  arrange(desc(revenue)) |>
+  slice_head(n = 10)
+
+print(top_books |>
+        select(title, author, genre, subgenre, revenue))
+
+ggplot(top_books, aes(x = reorder(str_wrap(title, width = 30), revenue), y = revenue)) +
+  geom_col(fill = "#796878") +
+  geom_text(
+    aes(label = paste0(round(revenue / 1e6, 1), "M")),
+    hjust = -0.1,
+    size = 3
+  ) +  
+  coord_flip() +
+  scale_y_continuous(
+    labels = label_number(scale = 1e-6, suffix = "M"),
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  labs(
+    title = "Top 10 Books by Revenue",
+    x = "Book Title",
+    y = "Total Revenue (Millions USD)"
+  ) +
+  theme_sage_purple() +
+  guides(fill = "none")
+```
+
+
+## **4. Do highly rated books mean stronger customer engagement? (relationship between rating & review)**
+
+```{r fig.width=14, fig.height=8}
+
+Dataset_filtered <- Dataset |>
+  filter(reviews_count < 80000) #remove outlier values to better show trend
+
+ggplot(Dataset_filtered, aes(x = rating, y = reviews_count)) +
+  geom_jitter(width = 0.02, alpha = 0.35, size = 1.5, color = "#796B87") +
+  geom_smooth(method = "lm", color = "mediumpurple4", se = FALSE, linewidth = 1.2) +
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "K")) +
+  labs(
+    title = "Relationship Between Rating & Customer Engagement",
+    subtitle = "Customer Engagement is measured by review count",
+    caption = "Books with review counts over 80,000 were excluded to improve visualization & clearly display trend.",
+    x = "Average Rating (out of 5.0)",
+    y = "Number of Reviews"
+  ) +
+  theme_sage_purple() +
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 11))
+```
+
+## **alternative Boxplot to display info in another way**
+
+```{r fig.width=14, fig.height=8}
+Dataset_filtered <- Dataset |>
+  filter(reviews_count < 80000) |>
+  mutate(rating_group = factor(round(rating, 1)))
+
+ggplot(Dataset_filtered, aes(x = rating_group, y = reviews_count)) +
+  geom_boxplot(fill = "#796B87", color = "#4B3FBF", alpha = 0.8, outlier.alpha = 0.3) +
+  geom_jitter(width = 0.15, alpha = 0.15, size = 1, color = "#4B3FBF") +
+  scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "K")) +
+  labs(
+    title = "Customer Engagement by Rating Group",
+    subtitle = "Customer engagement is measured by review count",
+    x = "Average Rating (Grouped)",
+    y = "Number of Reviews",
+    caption = "Books with review counts above 80,000 were excluded to improve visualization clarity."
+  ) +
+  theme_sage_purple() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 11),
+    panel.grid.minor = element_blank()
+  )
+```
+
+
+
+## **5. Which books should be prioritized moving forward? (revenue & engagement)**
+
+```{r fig.width=14, fig.height=10}
+books_priority <- Dataset |>
+  mutate(
+    revenue = final_price * reviews_count,
+    revenue_z = as.numeric(scale(revenue)),
+    engagement_z = as.numeric(scale(reviews_count)),
+    priority_score = 0.6 * revenue_z + 0.4 * engagement_z
+  ) |>
+  arrange(desc(priority_score))
+
+head(books_priority |>
+       select(title, author, genre, subgenre, revenue, reviews_count, priority_score), 10)
+
+top_priority <- books_priority |>
+  slice_head(n = 10)
+
+ggplot(top_priority, aes(x = reorder(str_wrap(title, width = 35), priority_score), y = priority_score)) +
+  geom_col(fill = "#796B87") +
+  geom_text(
+    aes(label = paste0(round(revenue / 1e6, 1), "M")),
+    hjust = 1.2,
+    color = "white",
+    size = 3
+  ) +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))
+  ) +
+  labs(
+    title = "Top 10 Products to Prioritize Moving Forward",
+    subtitle = "Based on a combined score of revenue (60%) and customer engagement (40%).",
+    x = "Book Title",
+    y = "Priority Score"
+  ) +
+  theme_sage_purple() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5, size = 11),
+    panel.grid.minor = element_blank()
+  ) +
+  guides(fill = "none")
+```
+
+## **Experimental to show contributions to Priority Score**
+
+```{r fig.width=16, fig.height=9}  
+top_priority_long <- top_priority |>
+  select(title, priority_score, revenue_z, engagement_z) |>
+  mutate(title = str_wrap(title, width = 30))
+
+p1 <- top_priority_long |>
+  select(title, priority_score) |>
+  ggplot(aes(x = reorder(title, priority_score), y = priority_score)) +
+  geom_col(fill = "#796B87") +
+  geom_text(aes(label = round(priority_score, 2)), hjust = -0.1, size = 3) +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "Priority Score Ranking",
+    x = "Book Title",
+    y = "Priority Score"
+  ) +
+  theme_sage_purple() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+p2 <- top_priority_long |>
+  pivot_longer(
+    cols = c(revenue_z, engagement_z),
+    names_to = "component",
+    values_to = "value"
+  ) |>
+  mutate(
+    component = recode(component,
+                       revenue_z = "Revenue",
+                       engagement_z = "Engagement")
+  ) |>
+  ggplot(aes(x = reorder(title, value), y = value, fill = component)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  scale_fill_manual(values = c("Revenue" = "#796B87", "Engagement" = "#4B3FBF")) +
+  labs(
+    title = "Revenue vs Engagement Contribution",
+    x = "Book Title",
+    y = "Standardized Contribution",
+    fill = "Component"
+  ) +
+  theme_sage_purple() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+p2
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
